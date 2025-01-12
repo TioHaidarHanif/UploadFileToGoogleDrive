@@ -1,0 +1,226 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Uploader with Cache</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #drop-zone {
+            border: 2px dashed #007bff;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            background-color: #f8f9fa;
+            color: #6c757d;
+            transition: background-color 0.3s ease;
+        }
+        #drop-zone.dragover {
+            background-color: #e9ecef;
+        }
+        .upload-status {
+            margin-top: 20px;
+        }
+        .timestamp {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container my-5">
+        <div class="text-center mb-4">
+            <h1 class="display-6">File Uploader to Google Drive</h1>
+            <p class="text-muted">Drag and drop your files below or click to select files. Files will be uploaded one by one.</p>
+        </div>
+
+        <!-- Folder Link Input -->
+        <div class="mb-4">
+            <label for="folder-link" class="form-label">Google Drive Folder Link (Optional)</label>
+            <small>Pastikan folder yang dituju memiliki akses oleh email <a href="">atiohaidar@gmail.com</a></small>
+            <input 
+                type="url" 
+                id="folder-link" 
+                class="form-control" 
+                placeholder="Enter Google Drive folder link">
+            <small class="text-muted">Leave empty to use the default folder. Cached link will auto-fill if previously entered.</small>
+        </div>
+
+        <!-- Drop Zone -->
+        <div id="drop-zone" class="mb-4">
+            <p>Drag & Drop files here or click to select files</p>
+            <input type="file" id="file-input" class="form-control d-none" multiple>
+        </div>
+
+        <!-- Clear Cache Button -->
+        <button id="clear-cache" class="btn btn-danger mb-4">Clear Cache</button>
+
+        <!-- Upload Status -->
+        <ul id="upload-status" class="list-group upload-status"></ul>
+    </div>
+    <footer>
+        <div class="text-center py-4">
+            
+
+            <p class="text-muted">Made with ChatGPT by <a href="" target="_blank">Tio Haidar Hanif</a></p>
+        <!-- reference -->
+        <p>Reference: <a href="            https://stackoverflow.com/questions/42217052/how-to-upload-a-file-via-post-dopost-to-a-google-scripts-web-app
+            " target="_blank">stackoverflow</a></p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const url = 'https://script.google.com/macros/s/AKfycbx7xVlwj5pPjf8GtWKhD74hnqAwFE6iouKqXe1zVBiXQ1MSDTDv9mkxK4wCWN5dCDBM_A/exec';
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const uploadStatus = document.getElementById('upload-status');
+        const folderLinkInput = document.getElementById('folder-link');
+        const clearCacheButton = document.getElementById('clear-cache');
+
+        // Load cached data on page load
+        window.onload = () => {
+            const cachedLink = localStorage.getItem('folderLink');
+            const cachedLogs = localStorage.getItem('uploadLogs');
+            if (cachedLink) {
+                folderLinkInput.value = cachedLink;
+            }
+            if (cachedLogs) {
+                const logs = JSON.parse(cachedLogs);
+                logs.forEach(log => addLogToUI(log));
+            }
+        };
+
+        // Add drag & drop events
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+            handleFiles(fileInput.files);
+        });
+
+        // Clear cache
+        clearCacheButton.addEventListener('click', () => {
+            localStorage.removeItem('folderLink');
+            localStorage.removeItem('uploadLogs');
+            uploadStatus.innerHTML = '';
+            alert('Cache cleared successfully.');
+        });
+
+        // Handle file uploads
+        function handleFiles(files) {
+            const fileArray = Array.from(files);
+            fileArray.forEach((file) => uploadFile(file));
+        }
+
+        function uploadFile(file) {
+            const startTime = new Date().toLocaleString();
+            const statusItem = document.createElement('li');
+            statusItem.className = 'list-group-item';
+            statusItem.innerHTML = `
+                <strong>${file.name}</strong>
+                <span class="badge bg-secondary ms-2">Uploading...</span>
+                <span class="timestamp ms-2">Started: ${startTime}</span>
+            `;
+            uploadStatus.prepend(statusItem);
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const fileBase64 = e.target.result.replace(/^.*,/, ''); // Remove Base64 prefix
+                const folderLink = folderLinkInput.value.trim();
+                const params = {
+                    filename: file.name,
+                    mimeType: file.type,
+                    file: fileBase64,
+                    folderLink: folderLink, // Send folder link to Apps Script
+                };
+
+                // Cache folder link
+                if (folderLink) {
+                    localStorage.setItem('folderLink', folderLink);
+                }
+
+                // Post file to the server
+                const formData = new FormData();
+                Object.keys(params).forEach((key) => formData.append(key, params[key]));
+
+                fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        const endTime = new Date().toLocaleString();
+                        if (data.result.startsWith('File uploaded successfully')) {
+                            const fileUrl = data.result.split(': ')[1];
+                            updateStatusItem(statusItem, 'Uploaded', 'bg-success', fileUrl, startTime, endTime);
+                            cacheLog(file.name, 'Uploaded', startTime, endTime, fileUrl);
+                        } else if (data.result.includes('Invalid folder')) {
+                            const fileUrl = data.result.split(': ')[1];
+                            updateStatusItem(statusItem, 'Uploaded to Default Folder', 'bg-warning', fileUrl, startTime, endTime);
+                            cacheLog(file.name, 'Uploaded to Default Folder', startTime, endTime, fileUrl);
+                        } else {
+                            throw new Error(data.result);
+                        }
+                    })
+                    .catch((err) => {
+                        const endTime = new Date().toLocaleString();
+                        updateStatusItem(statusItem, 'Failed', 'bg-danger', null, startTime, endTime, err.message);
+                        cacheLog(file.name, 'Failed', startTime, endTime, null, err.message);
+                    });
+            };
+
+            reader.readAsDataURL(file);
+        }
+
+        function updateStatusItem(item, status, badgeClass, link = null, startTime, endTime, error = null) {
+            item.innerHTML = `
+                <strong>${item.querySelector('strong').textContent}</strong>
+                <span class="badge ${badgeClass} ms-2">${status}</span>
+                <span class="timestamp ms-2">Started: ${startTime}</span>
+                <span class="timestamp ms-2">Finished: ${endTime}</span>
+                ${link ? `<a href="${link}" class="ms-2" target="_blank">View File</a>` : ''}
+                ${error ? `<small class="text-muted ms-2">${error}</small>` : ''}
+            `;
+        }
+
+        function addLogToUI(log) {
+            const logItem = document.createElement('li');
+            logItem.className = 'list-group-item';
+            logItem.innerHTML = `
+                <strong>${log.fileName}</strong>
+                <span class="badge bg-secondary ms-2">${log.status}</span>
+                <span class="timestamp ms-2">Started: ${log.startTime}</span>
+                <span class="timestamp ms-2">Finished: ${log.endTime}</span>
+                ${log.link ? `<a href="${log.link}" class="ms-2" target="_blank">View File</a>` : ''}
+            `;
+            uploadStatus.prepend(logItem);
+        }
+
+        function cacheLog(fileName, status, startTime, endTime, link = null, error = null) {
+            const logs = JSON.parse(localStorage.getItem('uploadLogs') || '[]');
+            logs.push({ fileName, status, startTime, endTime, link, error }); // Tambahkan ke akhir array
+            localStorage.setItem('uploadLogs', JSON.stringify(logs));
+        }
+    </script>
+</body>
+</html>
